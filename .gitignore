@@ -1,0 +1,29 @@
+# Banco local do PDV
+database/pdv.db
+database/*.db-journal
+database/*.db-shm
+database/*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Variáveis de ambiente / segredos (use config/.env.example como template)
+config/.env
+.env
+.env.local
+
+# Configurações locais do Claude Code
+.claude/settings.local.json
+
+# Sistema operacional / editores
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Dependências (caso passe a usar composer)
+/vendor/
+composer.lock
