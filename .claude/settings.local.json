@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php -m)",
+      "Bash(grep -E '^\\(gd|imagick\\)$')",
+      "Bash(php -v)",
+      "WebSearch",
+      "WebFetch(domain:arius.com.br)"
+    ]
+  }
+}

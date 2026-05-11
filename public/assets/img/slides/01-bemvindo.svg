@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c2545"/>
+      <stop offset="1" stop-color="#1f4d8a"/>
+    </linearGradient>
+    <radialGradient id="rg1" cx="0.7" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#ffd95a" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ffd95a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#g1)"/>
+  <rect width="1920" height="1080" fill="url(#rg1)"/>
+  <g font-family="Inter, system-ui, sans-serif" fill="#fff" text-anchor="middle">
+    <text x="960" y="500" font-size="160" font-weight="800" letter-spacing="4">BEM-VINDO</text>
+    <text x="960" y="600" font-size="56" font-weight="500" opacity="0.85">Pressione qualquer tecla para iniciar</text>
+    <text x="960" y="980" font-size="32" font-weight="500" opacity="0.6" letter-spacing="6">PDV B7F</text>
+  </g>
+</svg>

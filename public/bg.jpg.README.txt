@@ -1,0 +1,6 @@
+Substituir este arquivo pelo arquivo bg.jpg do cliente.
+
+A imagem deve ter no mínimo 1920x1080 (Full HD).
+Será exibida em tela cheia com background-size: cover.
+
+Cada cliente personaliza com sua própria imagem.
