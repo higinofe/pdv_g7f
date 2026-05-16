@@ -9,20 +9,53 @@ use PDO;
  */
 class Produto
 {
-    /** Busca por código exato OU código de barras exato. */
+    /**
+     * Busca por código OU código de barras.
+     *
+     * Estratégia:
+     *  1. Match exato em `codigo` ou `codigo_barras` (ex.: bipe de EAN-13,
+     *     ou código completo `0009274`).
+     *  2. Se não achar, tenta sem zeros à esquerda em ambos os lados — o ERP
+     *     costuma armazenar `codigo` com padding (`0009274`) mas o operador
+     *     digitando manualmente lembra só `9274`. Só vale se houver UM
+     *     candidato (evita falso match quando o `9274` "puro" também existe).
+     */
     public static function porCodigoOuBarras(string $valor): ?array
     {
         $valor = trim($valor);
         if ($valor === '') return null;
 
-        $stmt = Database::pdo()->prepare(
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare(
             'SELECT * FROM produtos
              WHERE codigo = :v OR codigo_barras = :v
              LIMIT 1'
         );
         $stmt->execute([':v' => $valor]);
         $row = $stmt->fetch();
-        return $row ?: null;
+        if ($row) return $row;
+
+        // Fallback sem zeros à esquerda — só dispara se o que veio for numérico
+        // (evita comparar `0001A` com `1A` em códigos alfanuméricos). Comparamos
+        // o input normalizado contra LTRIM dos campos do banco, então funciona
+        // tanto pra "9274" quanto "00009274" digitados pelo operador.
+        if (ctype_digit($valor)) {
+            $semZeros = ltrim($valor, '0');
+            if ($semZeros === '') $semZeros = '0';
+            $stmt = $pdo->prepare(
+                "SELECT * FROM produtos
+                 WHERE LTRIM(codigo, '0')        = :v
+                    OR LTRIM(codigo_barras, '0') = :v
+                 LIMIT 2"
+            );
+            $stmt->execute([':v' => $semZeros]);
+            $resultados = $stmt->fetchAll();
+            // Só retorna se for único — múltiplos = ambíguo, melhor pedir o
+            // código completo do que adicionar o produto errado.
+            if (count($resultados) === 1) return $resultados[0];
+        }
+
+        return null;
     }
 
     /** Busca textual: por código, código de barras (LIKE) ou descrição (LIKE). */

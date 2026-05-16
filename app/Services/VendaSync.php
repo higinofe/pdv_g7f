@@ -165,12 +165,31 @@ class VendaSync
             ];
         }
 
+        // Pagamento misto: o contrato B7F atual só aceita uma `forma_pagamento`
+        // por pedido. Estratégia:
+        //   - 1 pagamento: envia normalmente
+        //   - >1 pagamento: envia a forma com MAIOR valor como "forma_pagamento"
+        //     e detalha o split em `observacoes` (auditoria humana).
+        $pagamentos = Venda::pagamentos($vendaId);
+        $formaErp   = (string) ($detalhe['forma_pagamento'] ?? 'dinheiro');
+        $detalhePag = '';
+        if (count($pagamentos) > 1) {
+            // Acha a forma dominante.
+            usort($pagamentos, fn($a, $b) => $b['valor'] <=> $a['valor']);
+            $formaErp = (string) $pagamentos[0]['forma'];
+            $partes = [];
+            foreach ($pagamentos as $p) {
+                $partes[] = sprintf('%s=%.2f', $p['forma'], (float)$p['valor']);
+            }
+            $detalhePag = ' [pagamentos: ' . implode(', ', $partes) . ']';
+        }
+
         // UUID guardado em observacoes para deduplicação caso o ERP receba a mesma venda.
-        $obs = '[uuid:' . self::uuidPorVenda($vendaId) . ']';
+        $obs = '[uuid:' . self::uuidPorVenda($vendaId) . ']' . $detalhePag;
 
         return [
             'tipo'            => 'balcao',
-            'forma_pagamento' => (string) ($detalhe['forma_pagamento'] ?? 'dinheiro'),
+            'forma_pagamento' => $formaErp,
             'person_id'       => null,
             'observacoes'     => $obs,
             'desconto'        => (float) ($detalhe['valor_desconto'] ?? 0),

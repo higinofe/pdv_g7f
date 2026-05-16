@@ -5,15 +5,10 @@ use App\Helpers\Auth;
 use App\Helpers\Response;
 use App\Models\Operador;
 
-Auth::exigirLogin();
+Auth::exigirAdmin();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     Response::erro('Método não permitido', 405);
-}
-
-$logado = Auth::operador();
-if (($logado['perfil'] ?? null) !== 'admin') {
-    Response::erro('Apenas administradores podem salvar operadores', 403);
 }
 
 $dados   = json_decode(file_get_contents('php://input'), true) ?? [];

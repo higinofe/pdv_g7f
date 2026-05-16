@@ -39,8 +39,30 @@ export const modal = {
         const el = document.getElementById(id);
         if (!el) return;
         el.hidden = false;
-        const primeiro = el.querySelector('input, button');
-        if (primeiro) setTimeout(() => primeiro.focus(), 50);
+        // Foca o primeiro campo editável visível; só recorre a botão (e nunca
+        // ao × do cabeçalho) se o modal não tiver inputs. Com a busca em ordem
+        // de documento o × vinha primeiro e roubava o Enter → fechava o modal.
+        setTimeout(() => {
+            const visivel = (n) => n.offsetParent !== null;
+            // Tipos editáveis primeiro (text/number/password/etc.) — assim
+            // não focamos um radio/checkbox quando há um campo de texto logo
+            // depois (caso típico: modal de desconto, com radios e o input
+            // de valor lado a lado).
+            const editaveis = [...el.querySelectorAll(
+                'input[type="text"],input[type="number"],input[type="password"],' +
+                'input[type="email"],input[type="tel"],input[type="search"],' +
+                'input[type="url"],input:not([type]),textarea,select')];
+            const outros = [...el.querySelectorAll(
+                'input:not([type="hidden"]):not([disabled]),select,textarea')];
+            const botoes = [...el.querySelectorAll(
+                'button:not(.btn-fechar):not([disabled])')];
+            const alvo = editaveis.find(visivel) || outros.find(visivel) || botoes.find(visivel);
+            if (!alvo) return;
+            alvo.focus();
+            if (typeof alvo.select === 'function') {
+                try { alvo.select(); } catch { /* number/date podem rejeitar */ }
+            }
+        }, 50);
     },
     fechar(id) {
         const el = document.getElementById(id);

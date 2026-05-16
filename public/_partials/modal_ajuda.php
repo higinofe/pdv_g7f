@@ -25,8 +25,9 @@
                         <dt><kbd>F8</kbd></dt>           <dd>Reforço (entrada de dinheiro)</dd>
                         <dt><kbd>F9</kbd></dt>           <dd>Finalizar venda / pagamento</dd>
                         <dt><kbd>F10</kbd></dt>          <dd>Transmitir cupom fiscal</dd>
-                        <dt><kbd>F11</kbd></dt>          <dd>Fechar caixa</dd>
-                        <dt><kbd>F12</kbd></dt>          <dd>Sair (logout completo)</dd>
+                        <dt><kbd>F11</kbd></dt>          <dd>Fechar caixa <small>(pode ser capturado pelo SO em alguns Linux — se não responder use F12 ou Ctrl+E)</small></dd>
+                        <dt><kbd>F12</kbd></dt>          <dd>Encerrar (fecha caixa + logout)</dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>E</kbd></dt> <dd>Encerrar caixa <small>(alternativa ao F11/F12)</small></dd>
                         <dt><kbd>Enter</kbd></dt>        <dd>Adicionar item bipado / digitado</dd>
                     </dl>
                 </section>
@@ -36,16 +37,23 @@
                     <dl>
                         <dt><kbd>Ctrl</kbd>+<kbd>H</kbd></dt>  <dd>Abrir esta ajuda</dd>
                         <dt><kbd>Ctrl</kbd>+<kbd>R</kbd></dt>  <dd>Reiniciar caixa (troca de operador, mantém o caixa aberto)</dd>
-                        <dt><kbd>Ctrl</kbd>+<kbd>P</kbd></dt>  <dd>Sincronizar produtos com o ERP <small>(igual a F3)</small></dd>
-                        <dt><kbd>Ctrl</kbd>+<kbd>O</kbd></dt>  <dd>Cadastro de operadores <small>(admin)</small></dd>
-                        <dt><kbd>Ctrl</kbd>+<kbd>,</kbd></dt>  <dd>Configurações da integração <small>(autorização do master)</small></dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>O</kbd></dt>          <dd>Sincronizar operadores com o ERP <small>(senha admin)</small></dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></dt> <dd>Alterar a senha do administrador</dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>,</kbd></dt>  <dd>Configurações da integração <small>(senha admin)</small></dd>
+                        <dt><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></dt>  <dd>Reiniciar / Desligar o computador</dd>
                         <dt><kbd>Esc</kbd></dt>                <dd>Fechar modal aberto</dd>
+                    </dl>
+
+                    <h3>Modo Comanda</h3>
+                    <dl>
+                        <dt><kbd>F4</kbd></dt>                 <dd>Abrir terminal de comanda <small>(só disponível com o caixa fechado, sem login)</small></dd>
                     </dl>
 
                     <h3>Tela inicial (caixa fechado)</h3>
                     <dl>
                         <dt><kbd>Qualquer tecla</kbd></dt>     <dd>Abre o login do operador</dd>
                         <dt><kbd>Toque na tela</kbd></dt>      <dd>Idem — também abre o login</dd>
+                        <dt><kbd>F4</kbd></dt>                 <dd>Atalho direto pro modo comanda</dd>
                     </dl>
 
                     <h3>Pagamento (modal F9)</h3>

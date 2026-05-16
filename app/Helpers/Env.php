@@ -48,6 +48,50 @@ class Env
         self::salvar();
     }
 
+    /**
+     * Aplica overrides da tabela `configuracoes` (chaves com prefixo `env.`).
+     * Chamado uma vez após Database::pdo() ficar pronto no bootstrap. Os
+     * valores do DB vencem o .env — assim a UI consegue mudar API_URL/TOKEN
+     * sem precisar escrever no arquivo (que costuma ser read-only no host).
+     */
+    public static function aplicarOverrides(): void
+    {
+        self::load();
+        try {
+            $pdo  = \App\Helpers\Database::pdo();
+            $stmt = $pdo->query("SELECT chave, valor FROM configuracoes WHERE chave LIKE 'env.%'");
+            foreach ($stmt->fetchAll() as $row) {
+                $chave = substr($row['chave'], 4); // remove 'env.'
+                if ($chave !== '') {
+                    self::$vars[$chave] = (string) $row['valor'];
+                }
+            }
+        } catch (\Throwable $e) {
+            // Banco ainda não disponível em alguns contextos (instalador, CLI
+            // de teste etc.) — segue só com o .env, sem quebrar.
+        }
+    }
+
+    /** Persiste um override no banco (sem tocar o .env). Lê tabela `configuracoes`. */
+    public static function setOverride(string $chave, string $valor): void
+    {
+        \App\Models\Configuracao::set('env.' . $chave, $valor);
+        self::$vars[$chave] = $valor;
+    }
+
+    /** Remove o override do banco (volta a valer o .env). */
+    public static function limparOverride(string $chave): void
+    {
+        $pdo = \App\Helpers\Database::pdo();
+        $pdo->prepare('DELETE FROM configuracoes WHERE chave = ?')
+            ->execute(['env.' . $chave]);
+        // recarrega valor do .env em memória
+        self::$loaded = false;
+        self::$vars = [];
+        self::load();
+        self::aplicarOverrides();
+    }
+
     /** Reescreve o .env preservando comentários quando possível. */
     private static function salvar(): void
     {

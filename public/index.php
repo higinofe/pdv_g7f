@@ -11,7 +11,11 @@ $pdvNome  = Env::get('PDV_NOME', 'PDV');
 $pdvId    = Env::get('PDV_ID', '001');
 $ehAdmin  = $logado && (($operador['perfil'] ?? '') === 'admin');
 
-$sessaoCaixa = $logado ? Caixa::sessaoAberta((string) $pdvId) : null;
+// Estado do caixa SEMPRE consultado no BD, independente da sessão do operador.
+// Quem fecha o caixa é só caixa_fechar.php — qualquer outra situação (sessão
+// PHP expirada, hard reload, troca de operador via Ctrl+R) NÃO pode fazer um
+// caixa que continua "aberta" no banco parecer fechado pra quem está olhando.
+$sessaoCaixa = Caixa::sessaoAberta((string) $pdvId);
 $caixaAberto = $sessaoCaixa !== null;
 
 // Estado do app:
@@ -29,6 +33,7 @@ $jsVer  = max(
     @filemtime(__DIR__ . '/assets/js/api.js')      ?: 0,
     @filemtime(__DIR__ . '/assets/js/ui.js')       ?: 0,
     @filemtime(__DIR__ . '/assets/js/carrinho.js') ?: 0,
+    @filemtime(__DIR__ . '/assets/js/sistema.js')  ?: 0,
 ) ?: time();
 ?>
 <!DOCTYPE html>
@@ -69,10 +74,26 @@ $jsVer  = max(
 
             <div class="splash-cta">
                 <span class="splash-relogio" id="relogio">--:--:--</span>
-                <span class="splash-msg">Pressione qualquer tecla ou toque na tela</span>
+                <span class="splash-msg">
+                    <?= $caixaAberto
+                        ? 'Caixa aberto — pressione qualquer tecla para identificar o operador'
+                        : 'Pressione qualquer tecla ou toque na tela' ?>
+                </span>
                 <span class="splash-pdv">
-                    Caixa <?= htmlspecialchars($pdvId) ?> · <?= htmlspecialchars($pdvNome) ?>
+                    <span class="splash-pdv-rotulo">Caixa <?= htmlspecialchars($pdvId) ?> · <?= htmlspecialchars($pdvNome) ?></span>
+                    <span class="splash-estado-caixa <?= $caixaAberto ? 'aberto' : 'fechado' ?>"
+                          title="<?= $caixaAberto
+                              ? 'Caixa aberto em ' . htmlspecialchars($sessaoCaixa['aberto_em'] ?? '') . ' por ' . htmlspecialchars($sessaoCaixa['operador_nome'] ?? '')
+                              : 'Caixa fechado — abertura requer identificação do operador' ?>">
+                        <span class="splash-estado-bolinha"></span>
+                        Caixa <?= $caixaAberto ? 'ABERTO' : 'FECHADO' ?>
+                    </span>
+                    <button type="button" class="splash-comanda" id="btn-comanda"
+                            title="<?= $caixaAberto
+                                ? 'Modo comanda só está disponível com o caixa fechado'
+                                : 'Terminal de Comanda (F4)' ?>">Comanda <span class="kbd-inline">F4</span></button>
                     <button type="button" class="splash-help" id="btn-ajuda" title="Ajuda (Ctrl+H)">Ajuda <span class="kbd-inline">Ctrl+H</span></button>
+                    <button type="button" class="splash-sistema" id="btn-sistema" title="Reiniciar / Desligar (Ctrl+Shift+P)">⏻ Sistema <span class="kbd-inline">Ctrl+Shift+P</span></button>
                 </span>
             </div>
         </main>
@@ -84,11 +105,13 @@ $jsVer  = max(
                 <div class="modal-body">
                     <form id="form-operador-login" autocomplete="off">
                         <label>Usuário
-                            <input type="text" id="op-login-email" autocomplete="username" autofocus required>
+                            <input type="text" id="op-login-email" autocomplete="off"
+                                   autocapitalize="off" spellcheck="false"
+                                   data-lpignore="true" data-form-type="other" required>
                         </label>
                         <label>PIN (4 dígitos)
                             <input type="password" id="op-login-senha" inputmode="numeric" pattern="[0-9]*" maxlength="4"
-                                   autocomplete="current-password" required>
+                                   autocomplete="off" data-lpignore="true" data-form-type="other" required>
                         </label>
                         <button type="submit" class="btn-primario grande">Entrar</button>
                         <p class="msg-erro" id="op-login-erro"></p>
@@ -104,10 +127,10 @@ $jsVer  = max(
                 <div class="modal-body">
                     <p class="hint">Olá, <strong id="ac-nome-operador">operador</strong>. Informe o valor inicial em dinheiro (fundo de troco).</p>
                     <label>Valor de abertura (R$)
-                        <input type="number" id="ac-valor" step="0.01" min="0" value="0" autofocus>
+                        <input type="number" id="ac-valor" step="0.01" min="0" value="0" autocomplete="off">
                     </label>
                     <label>Observação (opcional)
-                        <input type="text" id="ac-obs" placeholder="Ex.: troco inicial">
+                        <input type="text" id="ac-obs" placeholder="Ex.: troco inicial" autocomplete="off">
                     </label>
                     <button class="btn-primario grande" id="ac-confirmar">Confirmar Abertura</button>
                 </div>
@@ -136,10 +159,9 @@ $jsVer  = max(
                     <span class="sync-pendentes" id="sync-pendentes" hidden>0</span>
                 </button>
                 <span class="relogio" id="relogio">--:--:--</span>
-                <?php if ($ehAdmin): ?>
-                    <button class="btn-icone" id="btn-operadores" title="Operadores (Ctrl+O)">👤</button>
-                <?php endif; ?>
-                <button class="btn-icone" id="btn-sair" title="Sair (F12)">⎋</button>
+                <button class="btn-icone" id="btn-operadores" title="Cadastro de operadores (requer admin)">👤</button>
+                <button class="btn-icone" id="btn-sistema" title="Reiniciar / Desligar (Ctrl+Shift+P)">⏻</button>
+                <button class="btn-icone" id="btn-sair" title="Fechar caixa e sair (F12 ou Ctrl+E)">⎋</button>
             </div>
         </header>
 
@@ -148,7 +170,7 @@ $jsVer  = max(
             <section class="descricao-area">
                 <label for="busca-produto">Descrição</label>
                 <input type="text" id="busca-produto" class="campo-display"
-                       placeholder="Bipe ou digite o código e pressione ENTER" autofocus
+                       placeholder="Bipe o código de barras ou digite o código do produto e pressione ENTER" autofocus
                        autocomplete="off" inputmode="numeric">
             </section>
 
@@ -209,7 +231,6 @@ $jsVer  = max(
                 <button class="atalho" data-acao="finalizar"></button>
                 <button class="atalho" data-acao="cupom" disabled></button>
                 <button class="atalho" data-acao="fechar-caixa"></button>
-                <button class="atalho" data-acao="sair"></button>
             </div>
         </main>
 
@@ -262,14 +283,13 @@ $jsVer  = max(
                 <header><h2 id="mov-titulo">Sangria</h2><button class="btn-fechar" data-fechar>×</button></header>
                 <div class="modal-body">
                     <p class="hint" id="mov-hint"></p>
-                    <label>Valor (R$)<input type="number" id="mov-valor" step="0.01" min="0.01" autofocus></label>
-                    <label>Motivo<input type="text" id="mov-motivo" placeholder="Ex.: retirada do malote"></label>
+                    <label>Valor (R$)<input type="number" id="mov-valor" step="0.01" min="0.01" autocomplete="off"></label>
+                    <label>Motivo<input type="text" id="mov-motivo" placeholder="Ex.: retirada do malote" autocomplete="off"></label>
                     <button class="btn-primario grande" id="mov-confirmar">Confirmar</button>
                 </div>
             </div>
         </div>
 
-        <?php if ($ehAdmin): ?>
         <div class="modal" id="modal-operadores" hidden>
             <div class="modal-card glass operadores">
                 <header><h2>Cadastro de Operadores</h2><button class="btn-fechar" data-fechar>×</button></header>
@@ -312,7 +332,6 @@ $jsVer  = max(
                 </div>
             </div>
         </div>
-        <?php endif; ?>
 
         <div class="modal" id="modal-consulta" hidden>
             <div class="modal-card glass">
@@ -365,10 +384,27 @@ $jsVer  = max(
             <div class="modal-card glass pagamento">
                 <header><h2>Finalizar Venda</h2><button class="btn-fechar" data-fechar>×</button></header>
                 <div class="modal-body">
-                    <div class="resumo">
-                        <span>TOTAL A PAGAR</span>
-                        <strong id="pag-total">R$ 0,00</strong>
+                    <div class="pag-resumo">
+                        <div class="pag-resumo-linha">
+                            <span>Total a pagar</span>
+                            <strong id="pag-total">R$ 0,00</strong>
+                        </div>
+                        <div class="pag-resumo-linha">
+                            <span>Recebido</span>
+                            <strong id="pag-recebido-total">R$ 0,00</strong>
+                        </div>
+                        <div class="pag-resumo-linha falta" id="pag-falta-wrap">
+                            <span>Falta</span>
+                            <strong id="pag-falta">R$ 0,00</strong>
+                        </div>
+                        <div class="pag-resumo-linha troco" id="pag-troco-wrap" hidden>
+                            <span>Troco</span>
+                            <strong id="pag-troco">R$ 0,00</strong>
+                        </div>
                     </div>
+
+                    <p class="hint">Para pagamento misto, vá adicionando cada forma. <kbd>D</kbd>/<kbd>C</kbd>/<kbd>B</kbd>/<kbd>P</kbd>/<kbd>O</kbd> seleciona rapidamente.</p>
+
                     <div class="formas">
                         <button class="forma" data-forma="dinheiro">💵 Dinheiro</button>
                         <button class="forma" data-forma="debito">💳 Débito</button>
@@ -376,11 +412,17 @@ $jsVer  = max(
                         <button class="forma" data-forma="pix">📱 PIX</button>
                         <button class="forma" data-forma="outros">⋯ Outros</button>
                     </div>
-                    <div class="dinheiro" id="dinheiro-area" hidden>
-                        <label>Valor recebido (R$)<input type="number" id="pag-recebido" step="0.01" min="0" value="0"></label>
-                        <div class="troco">Troco: <strong id="pag-troco">R$ 0,00</strong></div>
+
+                    <div class="pag-entrada" id="pag-entrada" hidden>
+                        <label id="pag-entrada-label">Valor (R$)</label>
+                        <input type="number" id="pag-valor" step="0.01" min="0.01" value="0" autocomplete="off">
+                        <button type="button" class="btn-secundario" id="pag-adicionar">Adicionar</button>
+                        <button type="button" class="btn-secundario" id="pag-cancelar">Cancelar</button>
                     </div>
-                    <button class="btn-primario grande" id="btn-finalizar-pedido">FINALIZAR PEDIDO</button>
+
+                    <ul class="pag-lista" id="pag-lista" hidden></ul>
+
+                    <button class="btn-primario grande" id="btn-finalizar-pedido" disabled>FINALIZAR PEDIDO</button>
                 </div>
             </div>
         </div>
@@ -392,13 +434,138 @@ $jsVer  = max(
     <?php endif; ?>
 
     <!-- ============== MODAIS GLOBAIS (splash + venda) ============== -->
+    <!-- Elevação de admin sob demanda: qualquer ação que exija perfil admin
+         passa por aqui quando o operador logado não é admin. A senha é uma
+         única (gerenciada por App\Services\AdminSenha) — não há campo de
+         usuário, qualquer pessoa com a senha admin pode autorizar. -->
+    <div class="modal" id="modal-admin-auth" hidden>
+        <div class="modal-card glass">
+            <header><h2 id="adm-titulo">Autorização do Administrador</h2><button class="btn-fechar" data-fechar>×</button></header>
+            <div class="modal-body">
+                <p class="hint" id="adm-mensagem">Esta ação exige autorização de um administrador.</p>
+                <form id="form-admin-auth" autocomplete="off">
+                    <label>Senha do administrador
+                        <input type="password" id="adm-senha" autocomplete="off"
+                               data-lpignore="true" data-form-type="other" required autofocus>
+                    </label>
+                    <button type="submit" class="btn-primario grande">Autorizar</button>
+                    <p class="msg-erro" id="adm-erro"></p>
+                </form>
+                <p class="hint adm-rodape">
+                    <button type="button" class="link-acao" id="adm-trocar-senha">Alterar senha do administrador…</button>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trocar a senha de admin. Exige a senha atual + nova senha +
+         confirmação. Não passa pela elevação (a senha atual já basta). -->
+    <div class="modal" id="modal-admin-trocar-senha" hidden>
+        <div class="modal-card glass">
+            <header><h2>Alterar senha do administrador</h2><button class="btn-fechar" data-fechar>×</button></header>
+            <div class="modal-body">
+                <p class="hint">Informe a senha atual e a nova senha (mínimo 4 caracteres). Após a troca, qualquer elevação ativa é encerrada.</p>
+                <form id="form-admin-trocar-senha" autocomplete="off">
+                    <label>Senha atual
+                        <input type="password" id="adm-ts-atual" autocomplete="off"
+                               data-lpignore="true" data-form-type="other" required>
+                    </label>
+                    <label>Nova senha
+                        <input type="password" id="adm-ts-nova" autocomplete="off"
+                               data-lpignore="true" data-form-type="other" required minlength="4">
+                    </label>
+                    <label>Confirmar nova senha
+                        <input type="password" id="adm-ts-conf" autocomplete="off"
+                               data-lpignore="true" data-form-type="other" required minlength="4">
+                    </label>
+                    <button type="submit" class="btn-primario grande">Salvar nova senha</button>
+                    <p class="msg-erro" id="adm-ts-erro"></p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configurações da integração (Ctrl+,). Edita API_URL/TOKEN, dados do
+         PDV e endpoints. Persistência vai pra tabela `configuracoes` com
+         prefixo `env.` — overrides vencem o .env em runtime. -->
+    <div class="modal" id="modal-config-integracao" hidden>
+        <div class="modal-card glass operadores">
+            <header><h2>Configurações da Integração</h2><button class="btn-fechar" data-fechar>×</button></header>
+            <div class="modal-body">
+                <p class="hint">Alterações sobrescrevem o <code>.env</code> em runtime e ficam salvas no banco do PDV.</p>
+                <form id="form-config-integracao" autocomplete="off" class="op-form">
+                    <h3>ERP</h3>
+                    <label>API_URL <small>(base da API do ERP)</small>
+                        <input type="url" id="cfg-API_URL" autocomplete="off" data-lpignore="true">
+                    </label>
+                    <label>API_TOKEN <small>(em branco mantém o atual)</small>
+                        <input type="text" id="cfg-API_TOKEN" autocomplete="off" data-lpignore="true" placeholder="cole o novo token aqui se quiser regravar">
+                    </label>
+                    <h3>PDV</h3>
+                    <label>PDV_ID
+                        <input type="text" id="cfg-PDV_ID" autocomplete="off" data-lpignore="true">
+                    </label>
+                    <label>PDV_NOME <small>(usado como ?pdv= nos endpoints)</small>
+                        <input type="text" id="cfg-PDV_NOME" autocomplete="off" data-lpignore="true">
+                    </label>
+                    <h3>Tempos</h3>
+                    <label>HTTP_TIMEOUT <small>(segundos)</small>
+                        <input type="number" id="cfg-HTTP_TIMEOUT" min="1" step="1" autocomplete="off">
+                    </label>
+                    <label>SLIDES_INTERVALO_MS <small>(slideshow do splash)</small>
+                        <input type="number" id="cfg-SLIDES_INTERVALO_MS" min="1000" step="500" autocomplete="off">
+                    </label>
+                    <h3>Endpoints</h3>
+                    <label>ENDPOINT_PRODUTOS<input type="text" id="cfg-ENDPOINT_PRODUTOS" autocomplete="off"></label>
+                    <label>ENDPOINT_OPERADORES<input type="text" id="cfg-ENDPOINT_OPERADORES" autocomplete="off"></label>
+                    <label>ENDPOINT_OPERADOR_LOGIN<input type="text" id="cfg-ENDPOINT_OPERADOR_LOGIN" autocomplete="off"></label>
+                    <label>ENDPOINT_VENDAS<input type="text" id="cfg-ENDPOINT_VENDAS" autocomplete="off"></label>
+                    <label>ENDPOINT_CUPOM<input type="text" id="cfg-ENDPOINT_CUPOM" autocomplete="off"></label>
+                    <label>ENDPOINT_COMANDAS<input type="text" id="cfg-ENDPOINT_COMANDAS" autocomplete="off"></label>
+                    <label>ENDPOINT_FECHAMENTOS<input type="text" id="cfg-ENDPOINT_FECHAMENTOS" autocomplete="off"></label>
+
+                    <div class="row" style="margin-top:14px; gap:10px;">
+                        <button type="button" class="btn-secundario" id="cfg-testar">Testar conexão</button>
+                        <span class="flex-spacer" style="flex:1"></span>
+                        <button type="submit" class="btn-primario">Salvar configurações</button>
+                    </div>
+                    <p class="msg" id="cfg-msg"></p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-sistema" hidden>
+        <div class="modal-card glass sistema">
+            <header><h2>Sistema</h2><button class="btn-fechar" data-fechar>×</button></header>
+            <div class="modal-body">
+                <p class="hint" id="sistema-aviso-caixa" hidden>
+                    <strong>Atenção:</strong> o caixa está aberto. Feche o caixa antes de reiniciar ou desligar — caso contrário a venda em andamento será perdida.
+                </p>
+                <div class="sistema-acoes">
+                    <button type="button" class="btn-secundario grande" id="btn-sistema-reiniciar">
+                        <span class="sistema-icone">⟳</span>
+                        <span>Reiniciar</span>
+                        <small>desliga e religa o computador</small>
+                    </button>
+                    <button type="button" class="btn-secundario grande" id="btn-sistema-desligar">
+                        <span class="sistema-icone">⏻</span>
+                        <span>Desligar</span>
+                        <small>desliga o computador</small>
+                    </button>
+                </div>
+                <p class="hint">Atalho: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></p>
+            </div>
+        </div>
+    </div>
 
     <script type="importmap">
     {
       "imports": {
         "/assets/js/api.js":      "/assets/js/api.js?v=<?= $jsVer ?>",
         "/assets/js/ui.js":       "/assets/js/ui.js?v=<?= $jsVer ?>",
-        "/assets/js/carrinho.js": "/assets/js/carrinho.js?v=<?= $jsVer ?>"
+        "/assets/js/carrinho.js": "/assets/js/carrinho.js?v=<?= $jsVer ?>",
+        "/assets/js/sistema.js":  "/assets/js/sistema.js?v=<?= $jsVer ?>"
       }
     }
     </script>

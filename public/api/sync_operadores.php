@@ -5,12 +5,7 @@ use App\Helpers\Auth;
 use App\Helpers\Response;
 use App\Services\OperadorSync;
 
-Auth::exigirLogin();
-
-$op = Auth::operador();
-if (($op['perfil'] ?? '') !== 'admin') {
-    Response::erro('Apenas administradores podem sincronizar operadores', 403);
-}
+Auth::exigirAdmin();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     Response::erro('Método não permitido', 405);

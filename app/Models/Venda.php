@@ -14,11 +14,38 @@ use App\Helpers\Database;
 class Venda
 {
     /**
-     * Cria a venda + itens em uma única transação.
+     * Cria a venda + itens + pagamentos em uma única transação.
      * Retorna o ID local da venda.
+     *
+     * O cabeçalho aceita:
+     *  - 'pagamentos' => [['forma'=>x,'valor'=>y], ...]  (formato novo, pagamento misto)
+     *  - 'forma_pagamento' => x (fallback p/ pagamento único, gera 1 linha em venda_pagamentos)
+     *
+     * `vendas.forma_pagamento` vira "misto" quando há mais de uma forma — quem
+     * precisa do detalhe lê `venda_pagamentos`.
      */
     public static function criar(array $cabecalho, array $itens): int
     {
+        $pagamentos = self::normalizarPagamentos($cabecalho);
+
+        $somaPagamentos = 0.0;
+        foreach ($pagamentos as $p) $somaPagamentos += (float)$p['valor'];
+
+        $valorTotal = (float)($cabecalho['valor_total'] ?? 0);
+        $formaConsolidada = count($pagamentos) > 1
+            ? 'misto'
+            : (string)($pagamentos[0]['forma'] ?? 'outros');
+
+        // valor_recebido = soma dos pagamentos; valor_troco = excesso sobre o
+        // total (só faz sentido quando há dinheiro no mix, mas guardamos do
+        // mesmo jeito — quem consome decide se exibe).
+        $valorRecebido = isset($cabecalho['valor_recebido'])
+            ? (float)$cabecalho['valor_recebido']
+            : $somaPagamentos;
+        $valorTroco = isset($cabecalho['valor_troco'])
+            ? (float)$cabecalho['valor_troco']
+            : max(0.0, $somaPagamentos - $valorTotal);
+
         $pdo = Database::pdo();
         $pdo->beginTransaction();
         try {
@@ -33,14 +60,22 @@ class Venda
                 ':operador_id' => $cabecalho['operador_id'] ?? null,
                 ':pdv_id'      => $cabecalho['pdv_id'] ?? null,
                 ':sessao_id'   => $cabecalho['sessao_id'] ?? null,
-                ':forma'       => $cabecalho['forma_pagamento'] ?? null,
-                ':total'       => (float)($cabecalho['valor_total'] ?? 0),
+                ':forma'       => $formaConsolidada,
+                ':total'       => $valorTotal,
                 ':desc'        => (float)($cabecalho['valor_desconto'] ?? 0),
-                ':recebido'    => isset($cabecalho['valor_recebido']) ? (float)$cabecalho['valor_recebido'] : null,
-                ':troco'       => isset($cabecalho['valor_troco'])    ? (float)$cabecalho['valor_troco']    : null,
+                ':recebido'    => $valorRecebido,
+                ':troco'       => $valorTroco,
                 ':status'      => $cabecalho['status'] ?? 'pendente',
             ]);
             $vendaId = (int) $pdo->lastInsertId();
+
+            $stmtPag = $pdo->prepare(
+                'INSERT INTO venda_pagamentos (venda_id, forma, valor, ordem)
+                 VALUES (?, ?, ?, ?)'
+            );
+            foreach ($pagamentos as $i => $p) {
+                $stmtPag->execute([$vendaId, $p['forma'], (float)$p['valor'], $i]);
+            }
 
             $stmtItem = $pdo->prepare(
                 'INSERT INTO venda_itens
@@ -76,6 +111,48 @@ class Venda
             $pdo->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Padroniza a lista de pagamentos a partir do cabeçalho recebido:
+     *  - Se vier `pagamentos[]`: usa, filtrando formas inválidas e valores não-positivos.
+     *  - Senão, se vier `forma_pagamento`: monta lista de 1 pagamento com valor_total.
+     */
+    public static function normalizarPagamentos(array $cabecalho): array
+    {
+        $formasOk = ['dinheiro', 'debito', 'credito', 'pix', 'outros'];
+        $lista = [];
+
+        if (!empty($cabecalho['pagamentos']) && is_array($cabecalho['pagamentos'])) {
+            foreach ($cabecalho['pagamentos'] as $p) {
+                if (!is_array($p)) continue;
+                $forma = (string)($p['forma'] ?? '');
+                $valor = (float)($p['valor'] ?? 0);
+                if (!in_array($forma, $formasOk, true) || $valor <= 0) continue;
+                $lista[] = ['forma' => $forma, 'valor' => $valor];
+            }
+        }
+
+        if (empty($lista)) {
+            $forma = (string)($cabecalho['forma_pagamento'] ?? 'outros');
+            if (!in_array($forma, $formasOk, true)) $forma = 'outros';
+            $valor = isset($cabecalho['valor_recebido']) && (float)$cabecalho['valor_recebido'] > 0
+                ? (float)$cabecalho['valor_recebido']
+                : (float)($cabecalho['valor_total'] ?? 0);
+            $lista[] = ['forma' => $forma, 'valor' => $valor];
+        }
+
+        return $lista;
+    }
+
+    /** Lista os pagamentos de uma venda. */
+    public static function pagamentos(int $vendaId): array
+    {
+        $stmt = Database::pdo()->prepare(
+            'SELECT forma, valor, ordem FROM venda_pagamentos WHERE venda_id = ? ORDER BY ordem, id'
+        );
+        $stmt->execute([$vendaId]);
+        return $stmt->fetchAll();
     }
 
     public static function porId(int $id): ?array

@@ -59,8 +59,23 @@ export const api = {
     operadorSalvar:  (dados)           => api.post('/api/operadores_salvar.php', dados),
     operadorExcluir: (id)              => api.post('/api/operadores_excluir.php',{ id }),
     operadoresSync:  ()                => api.post('/api/sync_operadores.php',   {}),
+    adminAutorizar:  (senha)                       => api.post('/api/admin_autorizar.php',     { senha }),
+    adminTrocarSenha:(senhaAtual, senhaNova, conf) => api.post('/api/admin_trocar_senha.php',  { senha_atual: senhaAtual, senha_nova: senhaNova, confirmacao: conf }),
+
+    // Configurações da integração (admin)
+    configListar:    ()                            => api.get ('/api/config_listar.php'),
+    configSalvar:    (dados)                       => api.post('/api/config_salvar.php',       dados),
+    configTestar:    (dados)                       => api.post('/api/config_testar.php',       dados || {}),
 
     // Sincronização (status + reenvio manual de pendentes)
     syncStatus:      ()                => api.get ('/api/sync_status.php'),
     syncVendas:      ()                => api.post('/api/sync_vendas.php',     {}),
+    syncFechamentos: ()                => api.post('/api/sync_fechamentos.php',{}),
+
+    // Comandas (terminal sem login + integração no caixa)
+    buscarComanda:   (codigo)          => api.get (`/api/comanda_buscar.php?codigo=${encodeURIComponent(codigo)}`),
+    comandasSync:    ()                => api.post('/api/comandas_sync.php',   {}),
+
+    // Sistema operacional do PDV (reiniciar / desligar a máquina)
+    sistemaAcao:     (acao)            => api.post('/api/sistema_acao.php',    { acao }),
 };

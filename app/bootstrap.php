@@ -20,9 +20,11 @@ use App\Helpers\Env;
 use App\Helpers\Database;
 use App\Helpers\Auth;
 
-// Carrega .env e inicializa banco/sessão
+// Carrega .env e inicializa banco/sessão. Overrides do banco rodam DEPOIS
+// do Database::pdo() porque dependem dele e devem vencer o .env.
 Env::load();
 Database::pdo();
+Env::aplicarOverrides();
 Auth::iniciar();
 
 // Configurações de timezone e charset

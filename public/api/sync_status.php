@@ -10,9 +10,20 @@ Auth::exigirLogin();
 
 $pdo = Database::pdo();
 
-$pendentesCount = (int) $pdo->query(
+$pendentesVendas = (int) $pdo->query(
     "SELECT COUNT(*) FROM vendas WHERE status = 'pendente'"
 )->fetchColumn();
+
+// Fechamentos com snapshot mas ainda não confirmados pelo ERP — também contam
+// como "pendentes" no badge da topbar, pra avisar que falta sync.
+$pendentesFechamentos = (int) $pdo->query(
+    "SELECT COUNT(*) FROM sessoes_caixa
+      WHERE status = 'fechada'
+        AND dados_fechamento IS NOT NULL
+        AND enviado_erp_em IS NULL"
+)->fetchColumn();
+
+$pendentesCount = $pendentesVendas + $pendentesFechamentos;
 
 $ultimaSync = $pdo->query(
     "SELECT atualizado_em FROM vendas
@@ -29,7 +40,9 @@ try {
 }
 
 Response::ok([
-    'online'      => $online,
-    'pendentes'   => $pendentesCount,
-    'ultima_sync' => $ultimaSync ?: null,
+    'online'                => $online,
+    'pendentes'             => $pendentesCount,
+    'pendentes_vendas'      => $pendentesVendas,
+    'pendentes_fechamentos' => $pendentesFechamentos,
+    'ultima_sync'           => $ultimaSync ?: null,
 ]);

@@ -41,7 +41,33 @@ class Database
         // 3. Seeds: operadores padrão e dados de teste.
         self::aplicarSeeds($pdo);
 
+        // 4. Backfills idempotentes: dados derivados que precisam existir
+        //    para o restante do sistema funcionar (ex.: venda_pagamentos
+        //    pra vendas antigas que vieram da versão single-forma).
+        self::aplicarBackfills($pdo);
+
         return self::$instancia;
+    }
+
+    /**
+     * Backfills: garante que dados antigos tenham as estruturas que a versão
+     * atual espera. Idempotente — só preenche o que falta.
+     */
+    private static function aplicarBackfills(PDO $pdo): void
+    {
+        // Cada venda precisa de ao menos um pagamento em venda_pagamentos.
+        // Vendas pré-pagamento-misto têm só vendas.forma_pagamento — espelhamos
+        // como pagamento único com o valor_total.
+        if (self::tabelaExiste($pdo, 'venda_pagamentos') && self::tabelaExiste($pdo, 'vendas')) {
+            $pdo->exec(
+                "INSERT INTO venda_pagamentos (venda_id, forma, valor, ordem)
+                 SELECT id, COALESCE(forma_pagamento, 'outros'), valor_total, 0
+                   FROM vendas
+                  WHERE NOT EXISTS (
+                      SELECT 1 FROM venda_pagamentos vp WHERE vp.venda_id = vendas.id
+                  )"
+            );
+        }
     }
 
     /** Adiciona colunas em tabelas pré-existentes, se ainda não tiverem. */
@@ -69,6 +95,21 @@ class Database
         }
         if (self::tabelaExiste($pdo, 'venda_itens') && !self::colunaExiste($pdo, 'venda_itens', 'produto_erp_id')) {
             $pdo->exec('ALTER TABLE venda_itens ADD COLUMN produto_erp_id INTEGER');
+        }
+        // Fechamento de caixa com histórico completo + envio ao ERP
+        if (self::tabelaExiste($pdo, 'sessoes_caixa')) {
+            if (!self::colunaExiste($pdo, 'sessoes_caixa', 'operador_fechamento_id'))
+                $pdo->exec('ALTER TABLE sessoes_caixa ADD COLUMN operador_fechamento_id INTEGER');
+            if (!self::colunaExiste($pdo, 'sessoes_caixa', 'dados_fechamento'))
+                $pdo->exec('ALTER TABLE sessoes_caixa ADD COLUMN dados_fechamento TEXT');
+            if (!self::colunaExiste($pdo, 'sessoes_caixa', 'enviado_erp_em'))
+                $pdo->exec('ALTER TABLE sessoes_caixa ADD COLUMN enviado_erp_em TEXT');
+            if (!self::colunaExiste($pdo, 'sessoes_caixa', 'numero_fechamento_erp'))
+                $pdo->exec('ALTER TABLE sessoes_caixa ADD COLUMN numero_fechamento_erp TEXT');
+            if (!self::colunaExiste($pdo, 'sessoes_caixa', 'tentativas_envio'))
+                $pdo->exec('ALTER TABLE sessoes_caixa ADD COLUMN tentativas_envio INTEGER NOT NULL DEFAULT 0');
+            if (!self::colunaExiste($pdo, 'sessoes_caixa', 'ultimo_erro_envio'))
+                $pdo->exec('ALTER TABLE sessoes_caixa ADD COLUMN ultimo_erro_envio TEXT');
         }
     }
 
